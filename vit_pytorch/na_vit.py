@@ -198,7 +198,7 @@ class MLP(nn.Module):
         return x
 
 class NaViT(nn.Module):
-    def __init__(self, *, image_size, patch_size, n_bboxs, n_classes, dim, depth, heads, mlp_dim, channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0., token_dropout_prob = None):
+    def __init__(self, *, image_size, patch_size, n_bboxs, n_classes, dim, depth, heads, mlp_dim, channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0., token_dropout_prob = None, head_dim = 2048):
         super().__init__()
         image_height, image_width = pair(image_size)
 
@@ -253,13 +253,21 @@ class NaViT(nn.Module):
         # output to logits
 
         self.to_latent = nn.Identity()
-        self.class_embed = nn.Linear(dim, n_bboxs * (n_classes + 1))
+
+        self.class_embed = nn.Sequential(
+            LayerNorm(dim),
+            nn.Linear(dim, head_dim),
+            nn.ReLU(),
+            nn.Linear(head_dim, n_bboxs * (n_classes + 1))
+        )
+
         self.bbox_embed = nn.Sequential(
             LayerNorm(dim),
-            nn.Linear(dim, dim, bias = False),
+            nn.Linear(dim, head_dim, bias = False),
             nn.ReLU(),
-            LayerNorm(dim),
-            nn.Linear(dim, n_bboxs * 4, bias = False), # where each bbox prediction is [confidence, x0, y0, x1, y1]
+            nn.Linear(head_dim, head_dim, bias = False),
+            nn.ReLU(),
+            nn.Linear(head_dim, n_bboxs * 4, bias = False), # where each bbox prediction is [confidence, x0, y0, x1, y1]
             nn.ReLU()
         )
 
