@@ -78,7 +78,7 @@ class Transformer(nn.Module):
         return self.norm(x)
 
 class SimpleViT(nn.Module):
-    def __init__(self, *, image_size, patch_size, num_classes, dim, depth, heads, mlp_dim, channels = 3, dim_head = 64):
+    def __init__(self, *, image_size, patch_size, n_bboxs, n_classes, dim, depth, heads, mlp_dim, channels = 3, dim_head = 64, class_head_dim = 2048):
         super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
@@ -105,16 +105,35 @@ class SimpleViT(nn.Module):
         self.pool = "mean"
         self.to_latent = nn.Identity()
 
-        self.linear_head = nn.Linear(dim, num_classes)
+        self.class_embed = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, class_head_dim),
+            nn.ReLU(),
+            nn.Linear(class_head_dim, n_bboxs * (n_classes + 1))
+        )
+        self.bbox_embed = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, class_head_dim, bias = False),
+            nn.ReLU(),
+            nn.Linear(class_head_dim, class_head_dim, bias = False),
+            nn.ReLU(),
+            nn.Linear(class_head_dim, n_bboxs * 4, bias = False), # where each bbox prediction is [confidence, x0, y0, x1, y1]
+            nn.ReLU()
+        )
 
     def forward(self, img):
         device = img.device
 
         x = self.to_patch_embedding(img)
-        x += self.pos_embedding.to(device, dtype=x.dtype)
+        x += self.pos_embedding[:x.shape[-2], :x.shape[-1]].to(device, dtype=x.dtype)
 
         x = self.transformer(x)
         x = x.mean(dim = 1)
 
         x = self.to_latent(x)
-        return self.linear_head(x)
+
+        class_out = self.class_embed(x)
+        bbox_out = self.bbox_embed(x).sigmoid()
+
+        return class_out, bbox_out 
+
