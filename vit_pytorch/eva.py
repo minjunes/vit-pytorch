@@ -149,9 +149,7 @@ class ViT(nn.Module):
 
         x = self.proj(x)
 
-        #t = self.teacher.encode_image(img)
+        #c = self.vision(teacher_img).norm(dim=-1, keepdim=True)
 
-        #t = t.norm(dim=-1, keepdim=True)
-
-        return x#, t
+        return x#, c
 
